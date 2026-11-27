@@ -8,6 +8,7 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     @Published var canGoBack = false
     @Published var canGoForward = false
     @Published var isLoading = false
+    @Published var isDesktop = false
 
     /// Called when the web view starts saving a file.
     var onDownloadStarted: (() -> Void)?
@@ -24,6 +25,8 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     override init() {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
+        // Look like Safari to websites (the default web view user agent lacks the Safari tokens).
+        config.applicationNameForUserAgent = "Version/18.0 Safari/604.1"
         webView = WKWebView(frame: .zero, configuration: config)
         super.init()
         webView.navigationDelegate = self
@@ -60,13 +63,21 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
         if let target { webView.load(URLRequest(url: target)) }
     }
 
+    /// Switches between the mobile and desktop version of sites, then reloads.
+    func toggleDesktopSite() {
+        isDesktop.toggle()
+        webView.reload()
+    }
+
     // MARK: Deciding what is a download
 
     func webView(_ webView: WKWebView,
                  decidePolicyFor navigationAction: WKNavigationAction,
-                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+                 preferences: WKWebpagePreferences,
+                 decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
+        preferences.preferredContentMode = isDesktop ? .desktop : .mobile
         // Links with the HTML "download" attribute (including blob: links made by scripts).
-        decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow)
+        decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow, preferences)
     }
 
     func webView(_ webView: WKWebView,
@@ -112,7 +123,7 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
 
         let progress = download.progress
         let observer = progress.publisher(for: \.completedUnitCount)
-            .receive(on: DispatchQueue.main)
+            .throttle(for: .milliseconds(500), scheduler: DispatchQueue.main, latest: true)
             .sink { completed in
                 let total = max(progress.totalUnitCount, 0)
                 manager.updateExternal(id, written: completed, total: total)
@@ -179,6 +190,10 @@ struct BrowserView: View {
                     .disabled(!model.canGoForward)
                 Spacer()
                 Button { model.webView.reload() } label: { Image(systemName: "arrow.clockwise") }
+                Spacer()
+                Button { model.toggleDesktopSite() } label: {
+                    Image(systemName: model.isDesktop ? "iphone" : "desktopcomputer")
+                }
             }
             .font(.title3)
             .padding(.horizontal, 32)

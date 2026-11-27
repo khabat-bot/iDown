@@ -40,7 +40,7 @@ struct DownloadsView: View {
                                         .monospacedDigit()
                                         .foregroundStyle(.secondary)
                                 case .finished:
-                                    Text("Finished · \(formatBytes(item.written)) · tap to open in Files")
+                                    Text("Finished · \(formatBytes(item.written)) · avg \(formatBytes(Int64(item.avgSpeed)))/s · tap to open in Files")
                                         .font(.caption)
                                         .foregroundStyle(.green)
                                 case .failed(let message):

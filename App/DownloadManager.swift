@@ -8,6 +8,8 @@ struct DownloadItem: Identifiable {
     var total: Int64 = 0
     var fileURL: URL?
     var state: State = .running
+    var startedAt = Date()
+    var avgSpeed: Double = 0         // bytes per second over the whole download
     var speed: Double = 0            // bytes per second, smoothed
     var lastSampleTime: Date?
     var lastSampleBytes: Int64 = 0
@@ -140,6 +142,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         update(id) {
             $0.name = fileURL.lastPathComponent
             $0.fileURL = fileURL
+            $0.avgSpeed = Double(size) / max(Date().timeIntervalSince($0.startedAt), 0.001)
             $0.written = size
             $0.total = size
             $0.speed = 0
@@ -238,6 +241,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             update(id) {
                 $0.name = destination.lastPathComponent
                 $0.fileURL = destination
+                $0.avgSpeed = Double(size) / max(Date().timeIntervalSince($0.startedAt), 0.001)
                 $0.written = size
                 $0.total = size
                 $0.speed = 0
