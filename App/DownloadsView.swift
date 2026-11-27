@@ -64,12 +64,32 @@ struct DownloadsView: View {
                         .onTapGesture {
                             if let url = item.fileURL { openInFiles(url) }
                         }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                manager.delete(item.id)
+                            } label: {
+                                Label(item.fileURL == nil ? "Remove" : "Delete file", systemImage: "trash")
+                            }
+                        }
                     }
                 }
             }
             .navigationTitle("iDown")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Clear finished") { manager.clearFinished() }
+                        .disabled(!hasInactiveItems)
+                }
+            }
         }
         .navigationViewStyle(.stack)
+    }
+
+    private var hasInactiveItems: Bool {
+        manager.items.contains { item in
+            if case .running = item.state { return false }
+            return true
+        }
     }
 
     /// Opens the Files app at the downloaded file (the app's Documents folder is visible in Files).

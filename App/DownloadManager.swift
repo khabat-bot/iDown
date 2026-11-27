@@ -78,6 +78,22 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         task.resume()
     }
 
+    /// Removes finished, failed and cancelled rows from the list. Files stay on disk.
+    func clearFinished() {
+        items.removeAll { item in
+            if case .running = item.state { return false }
+            return true
+        }
+    }
+
+    /// Removes a row and deletes its file. A running download is cancelled first.
+    func delete(_ id: Int) {
+        guard let item = items.first(where: { $0.id == id }) else { return }
+        if case .running = item.state { cancel(id) }
+        if let url = item.fileURL { try? FileManager.default.removeItem(at: url) }
+        items.removeAll { $0.id == id }
+    }
+
     // MARK: Downloads run by the web view (WKDownload)
 
     private var nextExternalID = -1
