@@ -31,10 +31,14 @@ struct DownloadsView: View {
                             case .running:
                                 ProgressView(value: item.progress)
                             case .finished:
-                                Text("Finished").font(.caption).foregroundStyle(.green)
+                                Text("Finished · tap to open in Files").font(.caption).foregroundStyle(.green)
                             case .failed(let message):
                                 Text(message).font(.caption).foregroundStyle(.red)
                             }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if let url = item.fileURL { openInFiles(url) }
                         }
                     }
                 }
@@ -42,5 +46,13 @@ struct DownloadsView: View {
             .navigationTitle("iDown")
         }
         .navigationViewStyle(.stack)
+    }
+
+    /// Opens the Files app at the downloaded file (the app's Documents folder is visible in Files).
+    private func openInFiles(_ url: URL) {
+        let link = url.absoluteString.replacingOccurrences(of: "file://", with: "shareddocuments://")
+        if let filesURL = URL(string: link) {
+            UIApplication.shared.open(filesURL)
+        }
     }
 }

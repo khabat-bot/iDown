@@ -6,6 +6,7 @@ struct DownloadItem: Identifiable {
     var name: String
     var written: Int64 = 0
     var total: Int64 = 0
+    var fileURL: URL?
     var state: State = .running
 
     var progress: Double { total > 0 ? Double(written) / Double(total) : 0 }
@@ -108,7 +109,11 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let destination = uniqueURL(in: docs, name: suggested.isEmpty ? "download" : suggested)
         do {
             try FileManager.default.moveItem(at: location, to: destination)
-            update(id) { $0.name = destination.lastPathComponent; $0.state = .finished }
+            update(id) {
+                $0.name = destination.lastPathComponent
+                $0.fileURL = destination
+                $0.state = .finished
+            }
         } catch {
             update(id) { $0.state = .failed(error.localizedDescription) }
         }
