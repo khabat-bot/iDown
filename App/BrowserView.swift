@@ -2,17 +2,23 @@ import Combine
 import SwiftUI
 import WebKit
 
-final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
+final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     let webView: WKWebView
     @Published var address = ""
     @Published var canGoBack = false
     @Published var canGoForward = false
     @Published var isLoading = false
 
-    /// Called with a ready-to-run request (cookies, referer, user agent included).
-    var onDownload: ((URLRequest) -> Void)?
+    /// Called when the web view starts saving a file.
+    var onDownloadStarted: (() -> Void)?
 
-    private var lastActionMethod = "GET"
+    private struct ActiveDownload {
+        let id: Int
+        let destination: URL
+        let observer: AnyCancellable
+    }
+
+    private var active: [ObjectIdentifier: ActiveDownload] = [:]
     private var bag = Set<AnyCancellable>()
 
     override init() {
@@ -54,45 +60,13 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
         if let target { webView.load(URLRequest(url: target)) }
     }
 
-    // MARK: Catching downloads
-
-    private func startDownload(url: URL) {
-        let referer = webView.url?.absoluteString
-        webView.evaluateJavaScript("navigator.userAgent") { [weak self] result, _ in
-            guard let self else { return }
-            let userAgent = result as? String
-            self.webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
-                let host = url.host ?? ""
-                let path = url.path.isEmpty ? "/" : url.path
-                let matching = cookies.filter { cookie in
-                    let domain = cookie.domain.hasPrefix(".") ? String(cookie.domain.dropFirst()) : cookie.domain
-                    return (host == domain || host.hasSuffix("." + domain))
-                        && path.hasPrefix(cookie.path)
-                        && (!cookie.isSecure || url.scheme == "https")
-                }
-                var request = URLRequest(url: url)
-                request.httpShouldHandleCookies = false
-                request.allHTTPHeaderFields = HTTPCookie.requestHeaderFields(with: matching)
-                if let userAgent { request.setValue(userAgent, forHTTPHeaderField: "User-Agent") }
-                if let referer { request.setValue(referer, forHTTPHeaderField: "Referer") }
-                DispatchQueue.main.async { self.onDownload?(request) }
-            }
-        }
-    }
+    // MARK: Deciding what is a download
 
     func webView(_ webView: WKWebView,
                  decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        lastActionMethod = navigationAction.request.httpMethod ?? "GET"
-        // Links with the HTML "download" attribute.
-        if navigationAction.shouldPerformDownload,
-           lastActionMethod == "GET",
-           let url = navigationAction.request.url {
-            decisionHandler(.cancel)
-            startDownload(url: url)
-            return
-        }
-        decisionHandler(.allow)
+        // Links with the HTML "download" attribute (including blob: links made by scripts).
+        decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow)
     }
 
     func webView(_ webView: WKWebView,
@@ -101,12 +75,15 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
         let http = navigationResponse.response as? HTTPURLResponse
         let disposition = http?.value(forHTTPHeaderField: "Content-Disposition")?.lowercased() ?? ""
         let isFile = disposition.contains("attachment") || !navigationResponse.canShowMIMEType
-        if isFile, lastActionMethod == "GET", let url = navigationResponse.response.url {
-            decisionHandler(.cancel)
-            startDownload(url: url)
-        } else {
-            decisionHandler(.allow)
-        }
+        decisionHandler(isFile ? .download : .allow)
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = self
     }
 
     // Open target="_blank" links in the same view so download buttons keep working.
@@ -118,6 +95,43 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
             webView.load(navigationAction.request)
         }
         return nil
+    }
+
+    // MARK: WKDownloadDelegate
+
+    func download(_ download: WKDownload,
+                  decideDestinationUsing response: URLResponse,
+                  suggestedFilename: String,
+                  completionHandler: @escaping (URL?) -> Void) {
+        let manager = DownloadManager.shared
+        let name = suggestedFilename.isEmpty ? "download" : suggestedFilename
+        let destination = manager.uniqueDestination(named: name)
+        let id = manager.beginExternal(name: destination.lastPathComponent)
+
+        let progress = download.progress
+        let observer = progress.publisher(for: \.completedUnitCount)
+            .receive(on: DispatchQueue.main)
+            .sink { completed in
+                let total = max(progress.totalUnitCount, 0)
+                manager.updateExternal(id, written: completed, total: total)
+            }
+        active[ObjectIdentifier(download)] = ActiveDownload(id: id, destination: destination, observer: observer)
+        onDownloadStarted?()
+        completionHandler(destination)
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        guard let entry = active.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        entry.observer.cancel()
+        DownloadManager.shared.finishExternal(entry.id, fileURL: entry.destination)
+    }
+
+    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+        let manager = DownloadManager.shared
+        let entry = active.removeValue(forKey: ObjectIdentifier(download))
+        entry?.observer.cancel()
+        let id = entry?.id ?? manager.beginExternal(name: "download")
+        manager.failExternal(id, message: error.localizedDescription)
     }
 }
 

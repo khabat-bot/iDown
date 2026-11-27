@@ -58,6 +58,45 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         task.resume()
     }
 
+    // MARK: Downloads run by the web view (WKDownload)
+
+    private var nextExternalID = -1
+
+    func uniqueDestination(named name: String) -> URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return uniqueURL(in: docs, name: name)
+    }
+
+    func beginExternal(name: String) -> Int {
+        let id = nextExternalID
+        nextExternalID -= 1
+        items.insert(DownloadItem(id: id, name: name), at: 0)
+        beginKeepAlive()
+        return id
+    }
+
+    func updateExternal(_ id: Int, written: Int64, total: Int64) {
+        update(id) {
+            $0.written = written
+            $0.total = total
+        }
+        refreshLiveActivity()
+    }
+
+    func finishExternal(_ id: Int, fileURL: URL) {
+        update(id) {
+            $0.name = fileURL.lastPathComponent
+            $0.fileURL = fileURL
+            $0.state = .finished
+        }
+        finishIfIdle()
+    }
+
+    func failExternal(_ id: Int, message: String) {
+        update(id) { $0.state = .failed(message) }
+        finishIfIdle()
+    }
+
     // MARK: Keep-alive helpers
 
     private func beginKeepAlive() {

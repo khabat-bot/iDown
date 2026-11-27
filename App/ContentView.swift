@@ -24,8 +24,7 @@ struct ContentView: View {
         }
         .animation(.default, value: showToast)
         .onAppear {
-            browser.onDownload = { request in
-                DownloadManager.shared.download(request)
+            browser.onDownloadStarted = {
                 showToast = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { showToast = false }
             }
