@@ -29,9 +29,19 @@ struct DownloadsView: View {
                             Text(item.name).lineLimit(1)
                             switch item.state {
                             case .running:
-                                ProgressView(value: item.progress)
+                                if item.total > 0 {
+                                    ProgressView(value: item.progress)
+                                } else {
+                                    ProgressView().progressViewStyle(.linear)
+                                }
+                                Text(item.statusLine)
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
                             case .finished:
-                                Text("Finished · tap to open in Files").font(.caption).foregroundStyle(.green)
+                                Text("Finished · \(formatBytes(item.written)) · tap to open in Files")
+                                    .font(.caption)
+                                    .foregroundStyle(.green)
                             case .failed(let message):
                                 Text(message).font(.caption).foregroundStyle(.red)
                             }

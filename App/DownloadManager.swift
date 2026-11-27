@@ -8,8 +8,28 @@ struct DownloadItem: Identifiable {
     var total: Int64 = 0
     var fileURL: URL?
     var state: State = .running
+    var speed: Double = 0            // bytes per second, smoothed
+    var lastSampleTime: Date?
+    var lastSampleBytes: Int64 = 0
 
-    var progress: Double { total > 0 ? Double(written) / Double(total) : 0 }
+    var progress: Double { total > 0 ? min(Double(written) / Double(total), 1) : 0 }
+
+    /// e.g. "12.3 MB of 45.6 MB · 27% · 2.1 MB/s"
+    var statusLine: String {
+        var parts: [String] = []
+        if total > 0 {
+            parts.append("\(formatBytes(written)) of \(formatBytes(total))")
+            parts.append("\(Int(progress * 100))%")
+        } else {
+            parts.append(formatBytes(written))
+        }
+        if speed > 0 { parts.append("\(formatBytes(Int64(speed)))/s") }
+        return parts.joined(separator: " · ")
+    }
+}
+
+func formatBytes(_ bytes: Int64) -> String {
+    ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
 }
 
 final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
@@ -76,17 +96,18 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     func updateExternal(_ id: Int, written: Int64, total: Int64) {
-        update(id) {
-            $0.written = written
-            $0.total = total
-        }
+        recordProgress(id, written: written, total: total)
         refreshLiveActivity()
     }
 
     func finishExternal(_ id: Int, fileURL: URL) {
+        let size = fileSize(fileURL)
         update(id) {
             $0.name = fileURL.lastPathComponent
             $0.fileURL = fileURL
+            $0.written = size
+            $0.total = size
+            $0.speed = 0
             $0.state = .finished
         }
         finishIfIdle()
@@ -110,8 +131,11 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let written = running.reduce(0) { $0 + $1.written }
         let total = running.reduce(0) { $0 + $1.total }
         let progress = total > 0 ? Double(written) / Double(total) : 0
-        let detail = running.count == 1 ? running[0].name : "\(running.count) files"
-        LiveActivityController.shared.update(progress: progress, detail: detail)
+        let speed = running.reduce(0.0) { $0 + $1.speed }
+        let label = running.count == 1 ? running[0].name : "\(running.count) files"
+        var stats = total > 0 ? "\(formatBytes(written)) of \(formatBytes(total))" : formatBytes(written)
+        if speed > 0 { stats += " · \(formatBytes(Int64(speed)))/s" }
+        LiveActivityController.shared.update(progress: progress, detail: "\(label) · \(stats)")
     }
 
     private func finishIfIdle() {
@@ -119,6 +143,32 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         guard !anyRunning else { return }
         KeepAlive.shared.stop()
         LiveActivityController.shared.end(detail: "Done")
+    }
+
+    /// Stores progress and refreshes the smoothed speed about once per second.
+    private func recordProgress(_ id: Int, written: Int64, total: Int64) {
+        update(id) { item in
+            let now = Date()
+            if let last = item.lastSampleTime {
+                let elapsed = now.timeIntervalSince(last)
+                if elapsed >= 1 {
+                    let instant = Double(written - item.lastSampleBytes) / elapsed
+                    item.speed = item.speed == 0 ? instant : item.speed * 0.6 + instant * 0.4
+                    item.lastSampleTime = now
+                    item.lastSampleBytes = written
+                }
+            } else {
+                item.lastSampleTime = now
+                item.lastSampleBytes = written
+            }
+            item.written = written
+            item.total = total
+        }
+    }
+
+    private func fileSize(_ url: URL) -> Int64 {
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? NSNumber
+        return size?.int64Value ?? 0
     }
 
     private func update(_ id: Int, _ change: (inout DownloadItem) -> Void) {
@@ -131,10 +181,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                     didWriteData bytesWritten: Int64, totalBytesWritten: Int64,
                     totalBytesExpectedToWrite: Int64) {
-        update(downloadTask.taskIdentifier) {
-            $0.written = totalBytesWritten
-            $0.total = totalBytesExpectedToWrite
-        }
+        recordProgress(downloadTask.taskIdentifier, written: totalBytesWritten, total: totalBytesExpectedToWrite)
         refreshLiveActivity()
     }
 
@@ -148,9 +195,13 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let destination = uniqueURL(in: docs, name: suggested.isEmpty ? "download" : suggested)
         do {
             try FileManager.default.moveItem(at: location, to: destination)
+            let size = fileSize(destination)
             update(id) {
                 $0.name = destination.lastPathComponent
                 $0.fileURL = destination
+                $0.written = size
+                $0.total = size
+                $0.speed = 0
                 $0.state = .finished
             }
         } catch {
