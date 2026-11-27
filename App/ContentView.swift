@@ -1,46 +1,34 @@
 import SwiftUI
 
 struct ContentView: View {
-    @ObservedObject private var manager = DownloadManager.shared
-    @State private var urlText = ""
+    @StateObject private var browser = BrowserModel()
+    @State private var showToast = false
 
     var body: some View {
-        NavigationView {
-            List {
-                Section {
-                    TextField("https://example.com/file.zip", text: $urlText)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button("Download") {
-                        let trimmed = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard let url = URL(string: trimmed),
-                              let scheme = url.scheme, scheme.hasPrefix("http") else { return }
-                        manager.download(url)
-                        urlText = ""
-                    }
-                    Button("Paste from clipboard") {
-                        urlText = UIPasteboard.general.string ?? ""
-                    }
-                }
-                Section("Downloads (saved in Files → On My iPhone → BG Downloader)") {
-                    ForEach(manager.items) { item in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.name).lineLimit(1)
-                            switch item.state {
-                            case .running:
-                                ProgressView(value: item.progress)
-                            case .finished:
-                                Text("Finished").font(.caption).foregroundStyle(.green)
-                            case .failed(let message):
-                                Text(message).font(.caption).foregroundStyle(.red)
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("BG Downloader")
+        TabView {
+            DownloadsView()
+                .tabItem { Label("Downloads", systemImage: "arrow.down.circle") }
+            BrowserView(model: browser)
+                .tabItem { Label("Browser", systemImage: "globe") }
         }
-        .navigationViewStyle(.stack)
+        .overlay(alignment: .top) {
+            if showToast {
+                Text("Download started")
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.top, 8)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.default, value: showToast)
+        .onAppear {
+            browser.onDownload = { request in
+                DownloadManager.shared.download(request)
+                showToast = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { showToast = false }
+            }
+        }
     }
 }

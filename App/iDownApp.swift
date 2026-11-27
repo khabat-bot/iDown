@@ -9,7 +9,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 }
 
 @main
-struct BGDownloaderApp: App {
+struct iDownApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {

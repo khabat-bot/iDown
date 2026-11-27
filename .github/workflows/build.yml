@@ -20,8 +20,8 @@ jobs:
       - name: Build (no code signing)
         run: |
           xcodebuild \
-            -project BGDownloader.xcodeproj \
-            -scheme BGDownloader \
+            -project iDown.xcodeproj \
+            -scheme iDown \
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
@@ -34,10 +34,10 @@ jobs:
       - name: Package IPA
         run: |
           mkdir Payload
-          cp -R build/Build/Products/Release-iphoneos/BGDownloader.app Payload/
-          zip -qry BGDownloader.ipa Payload
+          cp -R build/Build/Products/Release-iphoneos/iDown.app Payload/
+          zip -qry iDown.ipa Payload
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BGDownloader-unsigned-ipa
-          path: BGDownloader.ipa
+          name: iDown-unsigned-ipa
+          path: iDown.ipa

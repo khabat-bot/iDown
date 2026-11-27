@@ -1,4 +1,4 @@
-name: BGDownloader
+name: iDown
 options:
   bundleIdPrefix: com.khabat
   deploymentTarget:
@@ -11,7 +11,7 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""
 targets:
-  BGDownloader:
+  iDown:
     type: application
     platform: iOS
     sources:
@@ -20,7 +20,7 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: BG Downloader
+        CFBundleDisplayName: iDown
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -35,11 +35,11 @@ targets:
         LSSupportsOpeningDocumentsInPlace: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.khabat.bgdownloader
+        PRODUCT_BUNDLE_IDENTIFIER: com.khabat.idown
     dependencies:
-      - target: BGDownloaderWidget
+      - target: iDownWidget
         embed: true
-  BGDownloaderWidget:
+  iDownWidget:
     type: app-extension
     platform: iOS
     sources:
@@ -48,9 +48,9 @@ targets:
     info:
       path: Widget/Info.plist
       properties:
-        CFBundleDisplayName: BG Downloader Widget
+        CFBundleDisplayName: iDown Widget
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.khabat.bgdownloader.widget
+        PRODUCT_BUNDLE_IDENTIFIER: com.khabat.idown.widget

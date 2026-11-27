@@ -18,7 +18,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     @Published private(set) var items: [DownloadItem] = []
 
     private lazy var session: URLSession = {
-        let config = URLSessionConfiguration.background(withIdentifier: "com.khabat.bgdownloader.session")
+        let config = URLSessionConfiguration.background(withIdentifier: "com.khabat.idown.session")
         config.sessionSendsLaunchEvents = true
         config.isDiscretionary = false
         config.waitsForConnectivity = true
@@ -45,7 +45,12 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     func download(_ url: URL) {
-        let task = session.downloadTask(with: url)
+        download(URLRequest(url: url))
+    }
+
+    func download(_ request: URLRequest) {
+        guard let url = request.url else { return }
+        let task = session.downloadTask(with: request)
         let name = url.lastPathComponent.isEmpty ? (url.host ?? "file") : url.lastPathComponent
         items.insert(DownloadItem(id: task.taskIdentifier, name: name), at: 0)
         beginKeepAlive()
