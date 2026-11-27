@@ -1,0 +1,56 @@
+name: BGDownloader
+options:
+  bundleIdPrefix: com.khabat
+  deploymentTarget:
+    iOS: "16.2"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+targets:
+  BGDownloader:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Shared
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: BG Downloader
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIBackgroundModes:
+          - audio
+          - location
+          - fetch
+        NSSupportsLiveActivities: true
+        NSLocationWhenInUseUsageDescription: Used only to keep downloads running in the background.
+        NSLocationAlwaysAndWhenInUseUsageDescription: Used only to keep downloads running in the background.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.khabat.bgdownloader
+    dependencies:
+      - target: BGDownloaderWidget
+        embed: true
+  BGDownloaderWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Widget
+      - Shared
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: BG Downloader Widget
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.khabat.bgdownloader.widget
