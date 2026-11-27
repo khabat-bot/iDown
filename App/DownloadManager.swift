@@ -1,7 +1,7 @@
 import Foundation
 
 struct DownloadItem: Identifiable {
-    enum State { case running, finished, failed(String) }
+    enum State { case running, finished, failed(String), cancelled }
     let id: Int
     var name: String
     var written: Int64 = 0
@@ -81,15 +81,33 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     // MARK: Downloads run by the web view (WKDownload)
 
     private var nextExternalID = -1
+    private var externalCancels: [Int: () -> Void] = [:]
+
+    /// Cancels a running download, whether it runs in the background session or in the web view.
+    func cancel(_ id: Int) {
+        update(id) {
+            $0.state = .cancelled
+            $0.speed = 0
+        }
+        if id < 0 {
+            externalCancels.removeValue(forKey: id)?()
+        } else {
+            session.getAllTasks { tasks in
+                tasks.first { $0.taskIdentifier == id }?.cancel()
+            }
+        }
+        finishIfIdle()
+    }
 
     func uniqueDestination(named name: String) -> URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return uniqueURL(in: docs, name: name)
     }
 
-    func beginExternal(name: String) -> Int {
+    func beginExternal(name: String, cancel: @escaping () -> Void) -> Int {
         let id = nextExternalID
         nextExternalID -= 1
+        externalCancels[id] = cancel
         items.insert(DownloadItem(id: id, name: name), at: 0)
         beginKeepAlive()
         return id
@@ -101,6 +119,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     func finishExternal(_ id: Int, fileURL: URL) {
+        externalCancels[id] = nil
         let size = fileSize(fileURL)
         update(id) {
             $0.name = fileURL.lastPathComponent
@@ -114,7 +133,11 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     func failExternal(_ id: Int, message: String) {
-        update(id) { $0.state = .failed(message) }
+        externalCancels[id] = nil
+        update(id) {
+            if case .cancelled = $0.state { return }
+            $0.state = .failed(message)
+        }
         finishIfIdle()
     }
 
@@ -211,7 +234,11 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error {
-            update(task.taskIdentifier) { $0.state = .failed(error.localizedDescription) }
+            let wasCancelled = (error as NSError).code == NSURLErrorCancelled
+            update(task.taskIdentifier) {
+                if case .cancelled = $0.state { return }
+                $0.state = wasCancelled ? .cancelled : .failed(error.localizedDescription)
+            }
         }
         finishIfIdle()
     }

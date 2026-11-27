@@ -106,7 +106,9 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
         let manager = DownloadManager.shared
         let name = suggestedFilename.isEmpty ? "download" : suggestedFilename
         let destination = manager.uniqueDestination(named: name)
-        let id = manager.beginExternal(name: destination.lastPathComponent)
+        let id = manager.beginExternal(name: destination.lastPathComponent) { [weak download] in
+            download?.cancel { _ in }
+        }
 
         let progress = download.progress
         let observer = progress.publisher(for: \.completedUnitCount)
@@ -130,7 +132,10 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
         let manager = DownloadManager.shared
         let entry = active.removeValue(forKey: ObjectIdentifier(download))
         entry?.observer.cancel()
-        let id = entry?.id ?? manager.beginExternal(name: "download")
+        if let destination = entry?.destination {
+            try? FileManager.default.removeItem(at: destination) // drop the partial file
+        }
+        let id = entry?.id ?? manager.beginExternal(name: "download", cancel: {})
         manager.failExternal(id, message: error.localizedDescription)
     }
 }

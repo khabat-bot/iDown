@@ -25,25 +25,39 @@ struct DownloadsView: View {
                 }
                 Section("Downloads (saved in Files → On My iPhone → iDown)") {
                     ForEach(manager.items) { item in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.name).lineLimit(1)
-                            switch item.state {
-                            case .running:
-                                if item.total > 0 {
-                                    ProgressView(value: item.progress)
-                                } else {
-                                    ProgressView().progressViewStyle(.linear)
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.name).lineLimit(1)
+                                switch item.state {
+                                case .running:
+                                    if item.total > 0 {
+                                        ProgressView(value: item.progress)
+                                    } else {
+                                        ProgressView().progressViewStyle(.linear)
+                                    }
+                                    Text(item.statusLine)
+                                        .font(.caption)
+                                        .monospacedDigit()
+                                        .foregroundStyle(.secondary)
+                                case .finished:
+                                    Text("Finished · \(formatBytes(item.written)) · tap to open in Files")
+                                        .font(.caption)
+                                        .foregroundStyle(.green)
+                                case .failed(let message):
+                                    Text(message).font(.caption).foregroundStyle(.red)
+                                case .cancelled:
+                                    Text("Cancelled").font(.caption).foregroundStyle(.secondary)
                                 }
-                                Text(item.statusLine)
-                                    .font(.caption)
-                                    .monospacedDigit()
-                                    .foregroundStyle(.secondary)
-                            case .finished:
-                                Text("Finished · \(formatBytes(item.written)) · tap to open in Files")
-                                    .font(.caption)
-                                    .foregroundStyle(.green)
-                            case .failed(let message):
-                                Text(message).font(.caption).foregroundStyle(.red)
+                            }
+                            if case .running = item.state {
+                                Button {
+                                    manager.cancel(item.id)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.title2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.borderless)
                             }
                         }
                         .contentShape(Rectangle())
